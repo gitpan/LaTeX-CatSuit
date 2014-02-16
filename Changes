@@ -1,3 +1,22 @@
+2014-02-16 1.00-RC5
+
+   - Now used Log::Log4perl for logging.
+
+2013-01-05 1.00-RC4
+
+   - timeout implementation now kills all processes in the group. This prevent runaway LaTeX sub processes.
+
+2013-01-05 1.00-RC3
+
+   - Implemented timeouts with alarm. Note that this is a significant change.
+
+
+2011-09-25 1.00-RC1
+ 
+   - Forked off LaTeX::Driver (See below for old Changes history)
+
+
+
 #================================================= -*- indented-text -*-
 #
 # Changes 

@@ -31,19 +31,21 @@ use strict;
 use warnings;
 
 use base 'Class::Accessor';
+use Carp;                       # for confess
 use Cwd;                        # from PathTools
 use English;                    # standard Perl class
 use Exception::Class ( 'LaTeX::CatSuit::Exception' );
-use BSD::Resource;              # for timeout implementation
 use File::Copy;                 # standard Perl class
 use File::Compare;              # standard Perl class
 use File::Path;                 # standard Perl class
 use File::Slurp;
 use File::Spec;                 # from PathTools
 use IO::File;                   # from IO
-use Carp;                       # for confess
 
-our $VERSION = '1.00_02';
+use Log::Log4perl;
+my $LOGGER = Log::Log4perl->get_logger();
+
+our $VERSION = '1.00_05';
 
 __PACKAGE__->mk_accessors( qw( basename basedir basepath options tmpdir
                                source output tmpdir format
@@ -331,7 +333,7 @@ sub run {
 sub DESTROY {
     my $self = shift;
 
-    debug('DESTROY called') if $DEBUG;
+    $LOGGER->debug('DESTROY called');
 
     $self->cleanup();
 }
@@ -362,7 +364,7 @@ sub run_latex {
         $self->reset_latex_required;
         my $matched = 0;
         while ( <$fh> ) {
-            debug($_) if $DEBUG >= 9;
+            $LOGGER->trace($_);
             # TeX errors start with a "!" at the start of the
             # line, and followed several lines later by a line
             # designator of the form "l.nnn" where nnn is the line
@@ -385,24 +387,24 @@ sub run_latex {
                 $self->undefined_references(1);
             }
             elsif ( /^LaTeX Warning: Citation .* on page \d+ undefined/ ) {
-                debug('undefined citations detected') if $DEBUG;
+                $LOGGER->debug('undefined citations detected');
                 $self->undefined_citations(1);
             }
             elsif ( /LaTeX Warning: There were undefined references./i ) {
-                debug('undefined reference detected') if $DEBUG;
+                $LOGGER->debug('undefined reference detected');
                 $self->undefined_references(1)
                     unless $self->undefined_citations;
             }
             elsif ( /No file $basename\.(toc|lof|lot)/i ) {
-                debug("missing $1 file") if $DEBUG;
+                $LOGGER->debug("missing $1 file");
                 $self->undefined_references(1);
             }
             elsif ( /^LaTeX Warning: Label\(s\) may have changed./i ) {
-                debug('labels have changed') if $DEBUG;
+                $LOGGER->debug('labels have changed');
                 $self->labels_changed(1);
             }
             elsif ( /^Package longtable Warning: Table widths have changed\. Rerun LaTeX\./i) {
-                debug('table widths changed') if $DEBUG;
+                $LOGGER->debug('table widths changed');
                 $self->rerun_required(1);
             }
 
@@ -410,7 +412,7 @@ sub run_latex {
             # pdfmark, etc); this regexp catches most of those.
 
             elsif ( /Rerun to get (.*) right/i) {
-                debug("$1 changed") if $DEBUG;
+                $LOGGER->debug("$1 changed");
                 $self->rerun_required(1);
             }
         }
@@ -687,7 +689,7 @@ sub run_command {
     }
 
     $self->stats->{runs}{$progname}++;
-    debug("will run '$cmd'") if $DEBUG;
+    $LOGGER->info("will run '$cmd'");
 
     ## Replace system by a fork/exec
 
@@ -697,21 +699,27 @@ sub run_command {
         die "This should never be reached";
     }
     if( $pid == 0 ){
-        if( defined $self->timeout() ){
-            ## Set up some timeout with BSD::Resource
-            my $cpu_seconds = $self->timeout();
-            unless( setrlimit(RLIMIT_CPU, $cpu_seconds, $cpu_seconds) ){
-                die "Cannot set CPU Seconds limit on child process";
-            }
-        }
-
-        ## Lets execute
-        exec($cmd); ## This never returns.
+      ## Lets execute
+      $LOGGER->debug("As a new process group: Executing $cmd");
+      setpgrp(0,0);
+      exec($cmd); ## This never returns.
     }
 
-    ## Still in the parent. Waiting for the child. Blocking call.
-    waitpid($pid, 0);
-    my $exitstatus = $?;
+    ## Still in the parent. Waiting for the child but not too long. Blocking call.
+    my $exitstatus;
+    {
+      local $SIG{ALRM} = sub { $LOGGER->info("We waited enough for $pid. Killing the group");
+                               ## Note that we use the POSIX form of killing a group (negative pid) here.
+                               kill( 15 , 0-$pid ); };
+      if( defined $self->timeout() ){
+        my $timeout = $self->timeout();
+        $LOGGER->debug("Setting timeout at $timeout seconds");
+        alarm($timeout);
+      }
+      waitpid($pid, 0);
+      $exitstatus = $?;
+      alarm(0);
+    }
 
     if( $exitstatus != 0 ){
       if( $exitstatus == -1 ){
@@ -753,10 +761,10 @@ sub copy_to_output {
         # it's quite common for /tmp to be a separate filesystem
 
         if (rename($file, $output)) {
-            debug("renamed $file to $output") if $DEBUG;
+            $LOGGER->info("renamed $file to $output");
         }
         elsif (copy($file, $output)) {
-            debug("copied $file to $output") if $DEBUG;
+            $LOGGER->info("copied $file to $output");
         }
         else {
             $self->throw("failed to copy $file to $output");
@@ -792,7 +800,7 @@ sub _setup_tmpdir {
     $class->throw("cannot create temporary directory: $@") 
         if $@;
 
-    debug(sprintf("setting up temporary directory '%s'\n", $dirname)) if $DEBUG;
+    $LOGGER->info(sprintf("setting up temporary directory '%s'\n", $dirname));
 
     return $dirname;
 }
@@ -811,7 +819,7 @@ sub cleanup {
     debug('cleanup called') if $DEBUG;
     if ($cleanup eq 'rmdir') {
         if (!defined($what) or ($what ne 'none')) {
-            debug('cleanup removing directory tree ' . $self->basedir) if $DEBUG;
+            $LOGGER->info('cleanup removing directory tree ' . $self->basedir);
             rmtree($self->basedir);
         }
     }
@@ -842,14 +850,15 @@ sub program_path {
 #------------------------------------------------------------------------
 
 sub throw {
-    my $self = shift;
-    LaTeX::CatSuit::Exception->throw( error => join('', @_) );
+  my ( $self , @errors ) = @_;
+  $LOGGER->error("Throwing exception with errors: ",join(' AND ' , @errors ));
+  LaTeX::CatSuit::Exception->throw( error => join('', @errors ) );
 }
 
 sub debug {
-    print STDERR $DEBUGPREFIX || "[latex] ", @_;
-    print STDERR "\n" unless $_[-1] =~ / \n $ /mx;
-    return;
+  my ( @message ) = @_;
+  $LOGGER->debug(( $DEBUGPREFIX || '' ).join(' ', @message));
+  return;
 }
 
 
@@ -974,7 +983,8 @@ generated temporary directory, but will leave all other files intact.
 =item C<timeout>
 
 Specifies a timeout in second under which any underlying LaTeX command should finish.
-The run method will die in case it takes too long.
+The run method will die in case it takes too long. This is implemented using alarm,
+so it's not sensitive to all subprocesses the latex commands can actually spawn.
 
 =item C<indexstyle>
 
@@ -1000,6 +1010,9 @@ Capture the STDERR of your run into a file so you can examine it later.
 =item C<DEBUG>
 
 Enables debug statements if set to a non-zero value.
+
+This is DEPRECATED and will have no effect. This package now
+uses L<Log::Log4perl> for logging.
 
 =item C<DEBUGPREFIX>
 

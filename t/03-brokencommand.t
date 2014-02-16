@@ -12,6 +12,9 @@ use Test::More tests => 10;
 use Test::LaTeX::CatSuit;
 use LaTeX::CatSuit;
 
+use Log::Log4perl qw/:easy/;
+Log::Log4perl->easy_init($FATAL);
+
 ## Be liberal about Test::Exception
 BEGIN {
     eval "use Test::Exception";
@@ -20,7 +23,7 @@ BEGIN {
 
 tidy_directory($basedir, $docname, $debug);
 
-diag("Checking formatting a document with an incorrect latex path");
+## diag("Checking formatting a document with an incorrect latex path");
 my $drv = LaTeX::CatSuit->new( source => $docpath,
 			      format => 'dvi',
             paths => { 'latex' => '/a/non/existing/command' },

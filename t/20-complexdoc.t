@@ -10,6 +10,9 @@ use Data::Dumper;
 
 use Test::More tests => 12;
 
+use Log::Log4perl qw/:easy/;
+Log::Log4perl->easy_init($FATAL);
+
 use Test::LaTeX::CatSuit;
 use LaTeX::CatSuit;
 
@@ -21,7 +24,7 @@ my $drv = LaTeX::CatSuit->new( source    => $docpath,
 			      @DEBUGOPTS );
 
 
-diag("Checking the formatting of a complex LaTeX document with references, a bibliography, an index, etc");
+## diag("Checking the formatting of a complex LaTeX document with references, a bibliography, an index, etc");
 isa_ok($drv, 'LaTeX::CatSuit');
 is($drv->basedir, $basedir, "checking basedir");
 is($drv->basename, $docname, "checking basename");

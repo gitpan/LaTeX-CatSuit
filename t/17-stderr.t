@@ -10,6 +10,10 @@ use Data::Dumper;
 
 use Test::More;
 use Test::Exception;
+
+use Log::Log4perl qw/:easy/;
+Log::Log4perl->easy_init($FATAL);
+
 use Test::LaTeX::CatSuit;
 use LaTeX::CatSuit;
 
@@ -23,7 +27,7 @@ SKIP: {
   skip "No ".$xelatex." binary found on system. Skipping tests" , 1  unless $which_xelatex;
   my $drv = LaTeX::CatSuit->new( source => $docpath,
                                 format => 'pdf',
-                                timeout => 1,
+                                timeout => 5,
                                 paths => { 'pdflatex' => $which_xelatex },
                                 capture_stderr => 1,
                                 @DEBUGOPTS );
@@ -36,7 +40,7 @@ SKIP: {
   ## Now test that running without the option behaves as usual.
   $drv = LaTeX::CatSuit->new( source => $docpath,
                                 format => 'pdf',
-                                timeout => 1,
+                                timeout => 5,
                                 paths => { 'pdflatex' => $which_xelatex },
                                 @DEBUGOPTS );
   lives_ok( sub{ $drv->run() ; } , "Runs correctly using xelatex as a pdf producer.");

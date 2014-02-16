@@ -9,6 +9,10 @@ use lib ("$Bin/../lib", "$Bin/lib");
 use Data::Dumper;
 
 use Test::More tests => 13;
+
+use Log::Log4perl qw/:easy/;
+Log::Log4perl->easy_init($FATAL);
+
 use Test::LaTeX::CatSuit;
 use LaTeX::CatSuit;
 use File::Slurp;
@@ -22,7 +26,7 @@ my $drv = LaTeX::CatSuit->new( source      => \$source,
 			      output      => \$output,
 			      @DEBUGOPTS );
 
-diag("Checking the formatting of a simple LaTeX document read from a variable");
+## diag("Checking the formatting of a simple LaTeX document read from a variable");
 isa_ok($drv, 'LaTeX::CatSuit');
 like($drv->basedir, qr{^/tmp/$LaTeX::CatSuit::DEFAULT_TMPDIR\w+$}, "checking basedir");
 is($drv->basename, $LaTeX::CatSuit::DEFAULT_DOCNAME, "checking basename");
